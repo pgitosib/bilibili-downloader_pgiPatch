@@ -33,9 +33,25 @@ class BilibiliExecutor():
 
     def get_video(self, url) -> Video:
         """根据 URL 自动识别视频类型"""
+        # 规范化URL：确保 /video/BVID 后有斜杠，避免重定向导致清晰度降低
+        url = self._normalize_url(url)
         category = self._detect_category(url)
         video = Video(url, category)
         return video
+
+    def _normalize_url(self, url: str) -> str:
+        """
+        规范化B站URL格式，确保获取最高清晰度
+
+        问题：BV15FK6zTEuj?p=2 会被重定向，导致丢失会员状态，返回480P
+        解决：规范化为 BV15FK6zTEuj/?p=2，避免重定向，获取1080P
+        """
+        import re
+        # 匹配 /video/BVXXXXXX? 或 /video/avXXXXXX? (没有斜杠的情况)
+        pattern = r'(/video/(?:BV[0-9A-Za-z]+|av\d+))(\?)'
+        replacement = r'\1/\2'
+        normalized_url = re.sub(pattern, replacement, url)
+        return normalized_url
 
     def _detect_category(self, url: str) -> int:
         """
@@ -68,6 +84,11 @@ class BilibiliDownloader():
     def __init__(self) -> None:
         # 存放下载视频的文件夹路径
         self.temp_path = config.TEMP_PATH
+        # 用于给视频编号的计数器
+        self._video_counter = 0
+        self._counter_lock = asyncio.Lock()
+        # 用于保护打印输出的锁
+        self._print_lock = asyncio.Lock()
         self.base_headers = {
             'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
             'accept-encoding': 'gzip, deflate, br',
@@ -89,6 +110,11 @@ class BilibiliDownloader():
         }
 
     async def download_video(self, video) -> None:
+        # 为当前视频分配一个编号
+        async with self._counter_lock:
+            self._video_counter += 1
+            video_num = self._video_counter
+
         video_url = video.video_url
         audio_url = video.audio_url
 
@@ -97,9 +123,11 @@ class BilibiliDownloader():
         if hasattr(video, 'part_number') and video.part_number >= 1:
             video_filename = f'{video.title}_P{video.part_number}.mp4'
             audio_filename = f'{video.title}_P{video.part_number}.mp3'
+            part_label = f"P{video.part_number}"
         else:
             video_filename = video.title + '.mp4'
             audio_filename = video.title + '.mp3'
+            part_label = ""
 
         # 创建文件夹存放下载的视频
         if not os.path.exists(self.temp_path):
@@ -108,28 +136,52 @@ class BilibiliDownloader():
         # 根据视频格式选择下载方式
         if video.is_durl:
             # durl 格式：只下载单个合并的视频文件
-            print(f"\n📥 开始下载视频：{video_filename}")
+            async with self._print_lock:
+                print(f"\n{'─' * 60}")
+                print(f"[{video_num}] 📹 {video_filename}")
+                print(f"    清晰度: {video.get_quality_name()}")
+                print(f"{'─' * 60}")
 
             async with httpx.AsyncClient() as client:
-                await self._download(client, video_url, os.path.join(self.temp_path, video_filename), "视频", position=0)
+                await self._download(
+                    client, video_url,
+                    os.path.join(self.temp_path, video_filename),
+                    f"[{video_num}] 🎬 {part_label}".strip()
+                )
 
-            print("✅ 视频下载完成")
+            async with self._print_lock:
+                print(f"\n[{video_num}] ✅ 下载完成")
         else:
             # dash 格式：并发下载视频和音频
-            print(f"\n📥 开始下载视频和音频：{video_filename}\n")
+            async with self._print_lock:
+                print(f"\n{'─' * 60}")
+                print(f"[{video_num}] 📹 {video_filename}")
+                print(f"    清晰度: {video.get_quality_name()}")
+                print(f"{'─' * 60}")
 
             async with httpx.AsyncClient() as client:
-                video_task = self._download(client, video_url, os.path.join(self.temp_path, video_filename), "视频", position=0)
-                audio_task = self._download(client, audio_url, os.path.join(self.temp_path, audio_filename), "音频", position=1)
+                video_task = self._download(
+                    client, video_url,
+                    os.path.join(self.temp_path, video_filename),
+                    f"[{video_num}] 🎬视频 {part_label}".strip()
+                )
+                audio_task = self._download(
+                    client, audio_url,
+                    os.path.join(self.temp_path, audio_filename),
+                    f"[{video_num}] 🎵音频 {part_label}".strip()
+                )
 
                 # 并发下载视频和音频
                 await asyncio.gather(video_task, audio_task)
 
-            print("\n✅ 视频和音频下载完成")
+            async with self._print_lock:
+                print(f"\n[{video_num}] ✅ 下载完成")
 
-    async def _download(self, client: httpx.AsyncClient, url, filename, file_type="文件", position=0, max_retries=3, retry_delay=5) -> None:
+    async def _download(self, client: httpx.AsyncClient, url, filename, file_type="文件", max_retries=3, retry_delay=5) -> None:
         retries = 0
+
         while retries < max_retries:
+            progress_bar = None
             try:
                 # 检查文件是否已存在
                 file_size = 0
@@ -142,7 +194,7 @@ class BilibiliDownloader():
 
                 async with client.stream("GET", url, headers=headers) as response:
                     if response.status_code == 416:
-                        tqdm.write(f"  {file_type}已经下载完毕")
+                        print(f"  {file_type} 已经下载完毕")
                         return
 
                     # 总的文件大小包括已下载的部分
@@ -152,27 +204,43 @@ class BilibiliDownloader():
 
                     mode = "ab" if file_size > 0 else "wb"
 
-                    # 使用 tqdm 显示进度条，添加描述区分不同文件
-                    with open(filename, mode) as file, tqdm(
+                    # 使用 tqdm 显示进度条，不使用 position 避免输出混乱
+                    progress_bar = tqdm(
                         total=total_size,
                         unit="B",
                         unit_scale=True,
                         initial=file_size,
                         desc=f"  {file_type}",
-                        position=position,
-                        leave=True
-                    ) as progress_bar:
-                        async for chunk in response.aiter_bytes():
-                            if chunk:
-                                file.write(chunk)
-                                progress_bar.update(len(chunk))
-                return # 下载成功，退出函数
+                        leave=True,  # 保留已完成的进度条
+                        dynamic_ncols=True,
+                        miniters=1,
+                        mininterval=0.5
+                    )
+
+                    with open(filename, mode) as file:
+                        try:
+                            async for chunk in response.aiter_bytes():
+                                if chunk:
+                                    file.write(chunk)
+                                    progress_bar.update(len(chunk))
+                        finally:
+                            # 成功完成时不关闭，让进度条保留
+                            pass
+
+                # 下载成功后关闭进度条
+                if progress_bar is not None:
+                    progress_bar.close()
+                return
             except (httpx.RemoteProtocolError, httpx.RequestError) as e:
                 retries += 1
-                tqdm.write(f"  {file_type}下载出现错误: {e}，正在重试 ({retries}/{max_retries})...")
+                # 出错时必须关闭进度条，避免重复显示
+                if progress_bar is not None:
+                    progress_bar.clear()  # 清除显示
+                    progress_bar.close()  # 关闭进度条
+                print(f"  {file_type} 下载出现错误: {e}，正在重试 ({retries}/{max_retries})...")
                 await asyncio.sleep(retry_delay)
 
-        tqdm.write(f"  ❌ {file_type}下载失败，已达到最大重试次数")
+        print(f"  ❌ {file_type} 下载失败，已达到最大重试次数")
 
 
 class VideoMerge():
