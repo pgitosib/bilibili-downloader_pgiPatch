@@ -1,3 +1,6 @@
+import sys
+sys.path.append("libs")
+
 import time
 import asyncio
 import os
@@ -21,12 +24,7 @@ class BFacade():
     async def download_single(self, url):
         """下载单个视频"""
         video = await self.crawler.get(url)
-        print(f"\n{'=' * 60}")
-        print(f"📹 {video.title}")
-        print(f"📺 清晰度：{video.get_quality_name()}")
-        if video.is_durl:
-            print(f"📌 durl 格式（音视频已合并）")
-        print(f"{'=' * 60}")
+        # 视频信息将在下载时显示，这里不再重复输出
         await self.downloader.download_video(video)
         self.merger.merge_video(video)
 
@@ -54,8 +52,18 @@ async def async_main():
     # 开始下载时刻
     start_time = time.time()
 
+    # 显示下载配置信息
+    max_concurrent = 2  # 并发下载2个视频
+    print(f"\n{'=' * 60}")
+    print(f"📦 下载配置")
+    print(f"{'=' * 60}")
+    print(f"📋 待下载视频数量: {len(config.URL)}")
+    print(f"⚡ 下载模式: 最多同时下载 {max_concurrent} 个视频 (每个视频内音视频并发)")
+    print(f"💾 输出目录: {config.OUTPUT_PATH}")
+    print(f"{'=' * 60}\n")
+
     b = BFacade()
-    await b.download(config.URL)
+    await b.download(config.URL, max_concurrent=max_concurrent)
 
     # 计算用时
     end_time = time.time()

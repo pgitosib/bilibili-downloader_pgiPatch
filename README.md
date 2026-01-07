@@ -1,15 +1,7 @@
-# Bilibili视频下载
+# Bilibili视频下载(pgitosib集成库版)
 
 <div align="center">
     <img src="docs/bilibili-logo.png">
-</div>
-
-<div align=center>
-    <img src="https://img.shields.io/badge/python-3.8%2B-blue"/>
-    <img src="https://img.shields.io/badge/httpx-0.23.1-green"/>
-    <img src="https://img.shields.io/badge/beautifulsoup4-4.9.3-green"/>
-    <img src="https://img.shields.io/badge/moviepy-1.0.3-green"/>
-    <img src="https://img.shields.io/badge/tqdm-4.66.5-green"/>
 </div>
 
 ## :pushpin: 功能说明
@@ -25,12 +17,9 @@
 - [x] 自动清理临时文件
 - [ ] 支持番剧、纪录片下载【待测试】
 - [ ] 添加代理【待更新】
-
-## :white_check_mark: 安装依赖库
-
-```bash
-pip3 install -r requirements.txt
-```
+本仓库(forked)计划:
+- [x] 集成库到libs文件夹内
+- [ ] 将所有功能打包成exe
 
 ## :pencil2: COOKIE设置说明
 
@@ -40,13 +29,19 @@ pip3 install -r requirements.txt
 
 1. 浏览器登录 B 站，打开要下载的视频页
 2. `Ctrl + Shift + I` 或者鼠标右键选择检查，然后选择`网络`
-3. `Ctrl + R` 刷新网页，选择第一个，请求表头中找到 `cookie`
+3. `Ctrl + R` 刷新网页，选择第一个(通常是`BV`打头)，请求标头中找到 `cookie`
+4. 打开`config.py`，将 `COOKIE` 字符串替换为你的 COOKIE
+```py
+# B站登录后获取的SESSDATA，CURRENT_QUALITY等
+# 定期更换COOKIE的值即可
+COOKIE = "将此处的字符串替换为你的 COOKIE"
+```
 
 ![](docs/set-cookie.png)
 
 ## :pencil2: 下载链接添加说明
 
-打开`config.py`，在 `URL` 列表种添加视频 URL
+打开`config.py`，在 `URL` 列表中添加视频 URL
 
 ```py
 # 下载视频的 URL
@@ -68,11 +63,10 @@ URL = [
 
 ## :rocket: 运行方法
 
-`python main.py`
+双击运行 `run.bat`
 
 ```bash
-# python main.py
-python main.py
+
 
 ============================================================
 📹 【13小时完结】国民女神带着可爱女儿找上门求我负责？！可我明明却是个万能单身狗。
@@ -107,3 +101,17 @@ python main.py
 ## :tv: 运行效果
 
 ![](docs/screen.gif)
+
+## :information_source: 第三方组件声明
+
+本项目为了方便用户使用，**捆绑了FFmpeg的可执行文件 (`ffmpeg.exe`)**。
+- FFmpeg 受 **GNU General Public License v3.0 (GPL-3.0)** 许可证保护。
+- 本项目所使用的FFmpeg版本为 `ffmpeg version 8.0.1-essentials_build-www.gyan.dev` 。
+- 本项目的Python代码与FFmpeg通过独立的进程调用方式进行交互，二者为聚合关系。
+- 本项目的主程序代码采用 **MIT 许可证**，此许可证仅适用于本项目的Python源代码，**不适用于FFmpeg**。
+
+### 关于FFmpeg的GPL合规
+- 随本程序分发的FFmpeg二进制文件对应的完整源代码、构建说明及修改（如有）均可从以下官方渠道获取：
+    - 官方网站：[https://ffmpeg.org/](https://ffmpeg.org/)
+    - 官方源代码仓库：[https://git.ffmpeg.org/ffmpeg.git](https://git.ffmpeg.org/ffmpeg.git)
+- GPL-3.0许可证全文已附于：[libs/ffmpeg/LICENSE](libs/ffmpeg/LICENSE)
